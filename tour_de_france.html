@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+    <style>
+      h2 {
+          position: fixed;
+          text-align: center;
+          color: black;
+          background-color: none;
+          left: 665px;
+          font-size: 36px;
+          font-weight: normal;
+          font-color: "#bebada";
+      }
+      body {
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      }
+      .tick text {
+        font-size: 20px;
+      }
+    </style>
+    <script type="text/javascript">  
+      function draw(geo_data) {
+        "use strict";
+        var margin = 75,
+            width = 1650,
+            height = 800 - margin;
+
+        //make title
+        d3.select("body")
+          .append("h2")
+          .text("Tour de France");
+
+        var svg = d3.select("body")
+            .append("svg")
+            .attr("width", width + margin)
+            .attr("height", height + margin)
+            .append('g')
+            .attr('class', 'map');
+
+        //create a variable that stores all of the years
+        var years = [];
+
+        //loop from 1903 to 2014 in increments of 1
+        for(var i = 1903; i < 2016; i += 1) {
+          //leave out the WWII years
+            if(i !== 1915 && i !== 1916 && i !== 1917 && i !== 1918 && i !== 1940 && i !== 1941 && i !== 1942 && i !== 1943 && i !== 1944 && i !== 1945 && i !== 1946) {
+              //add the current year to the array
+              years.push(i);
+              };
+          }
+        //size and adjust the position of the map
+        //given latitude and longitude coordinates, mercator spits back x,y coordinates
+        var projection = d3.geo.equirectangular()
+          //scale the map
+          .scale(225)
+          //center the map
+          .translate([width/2.1,height/1.65]);
+        //create the svg object that will render the pixels constructed above
+        var path = d3.geo.path().projection(projection);
+
+        var map = svg.selectAll(".country")
+          .data(geo_data.features)
+          .enter()
+          .append("path")
+          .attr("class", "country")
+          .attr("d", path)
+          .style("fill", "#d9d9d9")
+          .style("stroke", "black")
+          .style("stroke-width", 0.5);
+
+
+        function plot_points(data) {
+
+          function agg_year(leaves){
+                  var total = d3.sum(leaves, function(d) { 
+                    return d["num_riders"];
+                  });
+
+                  //group all of the teams for each year. If you add an element to a set that is already there, it doesn't add it.
+                  var teams = d3.set();
+
+                  leaves.forEach(function(d){
+                    teams.add(d["country"])
+                  });
+
+                  var winner = "";
+
+                  leaves.forEach(function(d) {
+                    if (d.yellow === '1'){
+                      winner = d.country;
+                    }
+                  });
+
+                  //return the attendance and teams for each year
+                  return {
+                    "riders": total,
+                    "teams": teams.values(),
+                    "winner": winner
+                  };
+            }
+
+            var nested = d3.nest()
+               .key(function(d) {
+                  return d['year'];
+               })
+               .rollup(agg_year)
+               .entries(data);
+
+            //take a given year, and manipulate the elements on the map to 
+            //represent that year, and the attendance in that year
+            function update(year) {
+              var filtered = nested.filter(function(d) {
+                return new Date(d['key']).getUTCFullYear() === year;
+                });
+
+              //select the title, and add the current year 
+              d3.select("h2")
+                  .text("Tour de France " + year);
+
+              //get the list of countries for the current year and create an array of strings of the names
+              var countries = filtered[0].values['teams'];
+              var winner = filtered[0]['values']['winner'];
+
+              function update_countries(d) {
+                //indexOf returns the name of the property if it's in the array, and -1 otherwise
+                if (winner.indexOf(d.properties.name) !== -1){
+                  return "#ffed6f";
+                }
+                else if (countries.indexOf(d.properties.name) !== -1) {
+                  return "#fb8072";
+                }
+                else {
+                  return "#d9d9d9";
+                }
+              }
+                
+              //If country is in the year we're updating, make it red. 
+              svg.selectAll(".country")
+                  .transition()
+                  .duration(50)
+                  .style("fill", update_countries);
+            }
+            var year_idx = 0;
+
+            var year_interval = setInterval(function() {
+              update(years[year_idx]);
+
+              year_idx++;
+
+              //keeps code from running indefintely
+              if(year_idx >= years.length) {
+                clearInterval(year_interval);
+
+              var x = d3.scale.linear()
+                  .domain([1903, 2015])
+                  .range([margin * 2, width - margin * 3])
+                  .clamp(true);
+
+              var brush = d3.svg.brush()
+                  .x(x)
+                  .extent([1903, 2015])
+                  .on("brush", brushed);
+
+              svg.append("g")
+                  .attr("class", "x axis")
+                  .attr("transform", "translate(0," + height * 1.05  + ")")
+                  .call(d3.svg.axis()
+                    .scale(x)
+                    .orient("bottom")
+                    .tickFormat(d3.format("d"))
+                    //weight of bar
+                    .tickSize(2)
+                    //space between numbers and bar
+                    .tickPadding(15))
+                .select(".domain")
+                .select(function() { return this.parentNode.appendChild(this.cloneNode(true)); })
+                  .attr("class", "halo");
+
+              var slider = svg.append("g")
+                  .attr("class", "slider")
+                  .call(brush);
+
+              slider.selectAll(".extent,.resize")
+                  .remove();
+
+              var handle_height = 12
+
+              var handle = slider.append("rect")
+                  .attr("class", "handle")
+                  .attr("transform", "translate(0," + (height * 1.05 - handle_height/2) + ")")
+                  .attr("width", 12)
+                  .attr("height", handle_height);
+
+              //this calls the brush event when the page loads, to get the circle onto the slider
+              slider
+                  .call(brush.event);
+
+              function brushed(d) {
+                var value = brush.extent()[0];
+
+                if (d3.event.sourceEvent) { // not a programmatic event
+                  value = x.invert(d3.mouse(this)[0]);
+                  brush.extent([value, value]);
+                }
+
+                //handle is the variable for the slider circle, so cx is equal to where the circle is centered, which is wherever you slide the mouse
+                var abs_diff = years.map(function(y) {
+                  return Math.abs(y - value);
+                });
+                var this_year = years[abs_diff.indexOf(d3.min(abs_diff))];
+                handle.attr("x", x(this_year) - 4/2);
+                update(this_year);
+              }
+
+              }
+              //50 ms between map displays
+            }, 50);
+      }
+
+
+        d3.csv("tdf_data_list.csv", function(d) {
+          d['num_riders'] = +d['num_riders'];
+          return d;
+        }, plot_points);
+      };
+      </script>
+  </head>
+<body>
+  <script type="text/javascript">
+  /*
+    Use D3 to load the GeoJSON file
+    */
+    
+d3.json("world_countries.json", draw);
+  </script>
+</body>
+</html>
