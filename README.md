@@ -1,0 +1,1 @@
+This dynamic visualization explores the globalization of the Tour de France. Countries highlighted in red and yellow represent the nationalities of participating and winning riders, respectively. http://www.berkeleyalmandhunter.com/clean_blog_page/tdf/tour_de_france.html
